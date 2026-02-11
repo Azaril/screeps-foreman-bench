@@ -39,10 +39,6 @@ enum Commands {
         #[arg(short, long)]
         room: String,
 
-        /// Shard name, used in output metadata.
-        #[arg(short, long, default_value = "shard1")]
-        shard: String,
-
         /// Output directory for generated files.
         #[arg(short, long, default_value = "output")]
         output: String,
@@ -58,10 +54,6 @@ enum Commands {
         /// If omitted, plans all rooms with 2 sources and a controller.
         #[arg(short, long)]
         rooms: Option<String>,
-
-        /// Shard name, used in output metadata.
-        #[arg(short, long, default_value = "shard1")]
-        shard: String,
 
         /// Maximum number of rooms to plan (when --rooms is omitted).
         #[arg(short = 'n', long, default_value = "20")]
@@ -119,11 +111,11 @@ fn main() -> Result<(), String> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Plan { map, room, shard, output } => {
-            cmd_plan(&map, &room, &shard, &output)
+        Commands::Plan { map, room, output } => {
+            cmd_plan(&map, &room, &output)
         }
-        Commands::Compare { map, rooms, shard, limit, output } => {
-            cmd_compare(&map, rooms.as_deref(), &shard, limit, &output)
+        Commands::Compare { map, rooms, limit, output } => {
+            cmd_compare(&map, rooms.as_deref(), limit, &output)
         }
         Commands::ListRooms { map, sources, has_controller } => {
             cmd_list_rooms(&map, sources, has_controller)
@@ -131,7 +123,7 @@ fn main() -> Result<(), String> {
     }
 }
 
-fn cmd_plan(map_path: &str, room_name: &str, shard: &str, output_dir: &str) -> Result<(), String> {
+fn cmd_plan(map_path: &str, room_name: &str, output_dir: &str) -> Result<(), String> {
     std::fs::create_dir_all(output_dir)
         .map_err(|err| format!("Failed to create output folder '{}': {}", output_dir, err))?;
 
@@ -140,7 +132,7 @@ fn cmd_plan(map_path: &str, room_name: &str, shard: &str, output_dir: &str) -> R
     info!("Finished loading map data ({} rooms)", map_data.rooms.len());
 
     let room = map_data.get_room(room_name)?;
-    run_room(shard, room, output_dir)?;
+    run_room(room, output_dir)?;
 
     println!("Done. Output written to {}/", output_dir);
     Ok(())
@@ -149,7 +141,6 @@ fn cmd_plan(map_path: &str, room_name: &str, shard: &str, output_dir: &str) -> R
 fn cmd_compare(
     map_path: &str,
     rooms_arg: Option<&str>,
-    shard: &str,
     limit: usize,
     output_dir: &str,
 ) -> Result<(), String> {
@@ -184,7 +175,7 @@ fn cmd_compare(
 
     let mut results: Vec<_> = room_iter
         .filter_map(|room| {
-            match run_room(shard, room, output_dir) {
+            match run_room(room, output_dir) {
                 Ok(plan) => Some((room.name().to_owned(), plan)),
                 Err(err) => {
                     error!("Failed planning {}: {}", room.name(), err);
@@ -245,7 +236,7 @@ fn cmd_list_rooms(map_path: &str, sources_filter: Option<usize>, has_controller:
     Ok(())
 }
 
-fn run_room(shard: &str, room: &BenchRoomData, output_dir: &str) -> Result<Plan, String> {
+fn run_room(room: &BenchRoomData, output_dir: &str) -> Result<Plan, String> {
     let room_name = room.name();
 
     info!("Planning: {}", room_name);
@@ -307,7 +298,7 @@ fn run_room(shard: &str, room: &BenchRoomData, output_dir: &str) -> Result<Plan,
     let output_img_name = format!("{}/{}.png", output_dir, room_name);
     img.save(output_img_name).map_err(|err| format!("Failed to save image: {}", err))?;
 
-    let serialized_plan = serialize_plan(shard, room, &plan)?;
+    let serialized_plan = serialize_plan(room, &plan)?;
     let output_plan_name = format!("{}/{}_plan.json", output_dir, room_name);
     let output_plan_file =
         &File::create(output_plan_name).map_err(|err| format!("Failed to create plan file: {}", err))?;
@@ -321,59 +312,7 @@ fn run_room(shard: &str, room: &BenchRoomData, output_dir: &str) -> Result<Plan,
     Ok(plan)
 }
 
-#[derive(Serialize, Hash, Ord, PartialOrd, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
-enum RoomPlannerStructure {
-    Spawn = 0,
-    Extension = 1,
-    Road = 2,
-    Wall = 3,
-    Rampart = 4,
-    KeeperLair = 5,
-    Portal = 6,
-    Controller = 7,
-    Link = 8,
-    Storage = 9,
-    Tower = 10,
-    Observer = 11,
-    PowerBank = 12,
-    PowerSpawn = 13,
-    Extractor = 14,
-    Lab = 15,
-    Terminal = 16,
-    Container = 17,
-    Nuker = 18,
-    Factory = 19,
-    InvaderCore = 20,
-}
-
-impl From<screeps_foreman::shim::StructureType> for RoomPlannerStructure {
-    fn from(data: screeps_foreman::shim::StructureType) -> Self {
-        match data {
-            screeps_foreman::shim::StructureType::Spawn => RoomPlannerStructure::Spawn,
-            screeps_foreman::shim::StructureType::Extension => RoomPlannerStructure::Extension,
-            screeps_foreman::shim::StructureType::Road => RoomPlannerStructure::Road,
-            screeps_foreman::shim::StructureType::Wall => RoomPlannerStructure::Wall,
-            screeps_foreman::shim::StructureType::Rampart => RoomPlannerStructure::Rampart,
-            screeps_foreman::shim::StructureType::KeeperLair => RoomPlannerStructure::KeeperLair,
-            screeps_foreman::shim::StructureType::Portal => RoomPlannerStructure::Portal,
-            screeps_foreman::shim::StructureType::Controller => RoomPlannerStructure::Controller,
-            screeps_foreman::shim::StructureType::Link => RoomPlannerStructure::Link,
-            screeps_foreman::shim::StructureType::Storage => RoomPlannerStructure::Storage,
-            screeps_foreman::shim::StructureType::Tower => RoomPlannerStructure::Tower,
-            screeps_foreman::shim::StructureType::Observer => RoomPlannerStructure::Observer,
-            screeps_foreman::shim::StructureType::PowerBank => RoomPlannerStructure::PowerBank,
-            screeps_foreman::shim::StructureType::PowerSpawn => RoomPlannerStructure::PowerSpawn,
-            screeps_foreman::shim::StructureType::Extractor => RoomPlannerStructure::Extractor,
-            screeps_foreman::shim::StructureType::Lab => RoomPlannerStructure::Lab,
-            screeps_foreman::shim::StructureType::Terminal => RoomPlannerStructure::Terminal,
-            screeps_foreman::shim::StructureType::Container => RoomPlannerStructure::Container,
-            screeps_foreman::shim::StructureType::Nuker => RoomPlannerStructure::Nuker,
-            screeps_foreman::shim::StructureType::Factory => RoomPlannerStructure::Factory,
-            screeps_foreman::shim::StructureType::InvaderCore => RoomPlannerStructure::InvaderCore,
-        }
-    }
-}
+use screeps_foreman::StructureType;
 
 #[derive(Serialize)]
 struct RoomPlannerPosition {
@@ -390,39 +329,28 @@ impl From<Location> for RoomPlannerPosition {
     }
 }
 
-#[derive(Serialize, Default)]
-struct RoomPlannerEntry {
-    pos: Vec<RoomPlannerPosition>,
-}
-
 #[derive(Serialize)]
 struct RoomPlannerOutputData {
-    name: String,
-    shard: String,
     rcl: u32,
-    buildings: HashMap<RoomPlannerStructure, RoomPlannerEntry>,
+    structures: HashMap<StructureType, Vec<RoomPlannerPosition>>,
 }
 
 impl RoomVisualizer for RoomPlannerOutputData {
-    fn render(&mut self, location: Location, structure_type: screeps_foreman::shim::StructureType) {
-        let entry = self
-            .buildings
-            .entry(structure_type.into())
-            .or_insert_with(RoomPlannerEntry::default);
-        entry.pos.push(location.into());
+    fn render(&mut self, location: Location, structure_type: StructureType) {
+        self.structures
+            .entry(structure_type)
+            .or_default()
+            .push(location.into());
     }
 }
 
 fn serialize_plan(
-    shard: &str,
-    room_data: &BenchRoomData,
+    _room_data: &BenchRoomData,
     plan: &Plan,
 ) -> Result<RoomPlannerOutputData, String> {
     let mut data = RoomPlannerOutputData {
-        name: room_data.name().to_owned(),
-        shard: shard.to_owned(),
         rcl: 8,
-        buildings: HashMap::new(),
+        structures: HashMap::new(),
     };
 
     plan.visualize(&mut data);
@@ -467,18 +395,18 @@ struct ImgVisualizer<'a> {
 }
 
 impl<'a> RoomVisualizer for ImgVisualizer<'a> {
-    fn render(&mut self, location: Location, structure: screeps_foreman::shim::StructureType) {
+    fn render(&mut self, location: Location, structure: StructureType) {
         let color = match structure {
-            screeps_foreman::shim::StructureType::Road => Rgb([50, 0, 50]),
-            screeps_foreman::shim::StructureType::Rampart => Rgb([0, 255, 0]),
-            screeps_foreman::shim::StructureType::Spawn => Rgb([255, 255, 0]),
-            screeps_foreman::shim::StructureType::Storage => Rgb([0, 255, 255]),
-            screeps_foreman::shim::StructureType::Extension => Rgb([200, 100, 0]),
-            screeps_foreman::shim::StructureType::Tower => Rgb([255, 0, 0]),
-            screeps_foreman::shim::StructureType::Lab => Rgb([0, 200, 200]),
-            screeps_foreman::shim::StructureType::Link => Rgb([255, 165, 0]),
-            screeps_foreman::shim::StructureType::Terminal => Rgb([255, 192, 203]),
-            screeps_foreman::shim::StructureType::Container => Rgb([0, 0, 255]),
+            StructureType::Road => Rgb([50, 0, 50]),
+            StructureType::Rampart => Rgb([0, 255, 0]),
+            StructureType::Spawn => Rgb([255, 255, 0]),
+            StructureType::Storage => Rgb([0, 255, 255]),
+            StructureType::Extension => Rgb([200, 100, 0]),
+            StructureType::Tower => Rgb([255, 0, 0]),
+            StructureType::Lab => Rgb([0, 200, 200]),
+            StructureType::Link => Rgb([255, 165, 0]),
+            StructureType::Terminal => Rgb([255, 192, 203]),
+            StructureType::Container => Rgb([0, 0, 255]),
             _ => Rgb([255, 0, 0]),
         };
 
