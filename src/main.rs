@@ -1,19 +1,19 @@
 use clap::{Parser, Subcommand};
+use image::*;
+use log::*;
+#[cfg(not(feature = "profile"))]
+use rayon::prelude::*;
 use screeps_foreman::location::*;
 use screeps_foreman::plan::*;
 use screeps_foreman::planner::*;
 use screeps_foreman::room_data::*;
 use screeps_foreman::visual::*;
-use log::*;
-use std::fs::File;
-use std::path::Path;
-use std::io::Read;
 use serde::*;
-use image::*;
-use std::time::*;
 use std::collections::HashMap;
-#[cfg(not(feature = "profile"))]
-use rayon::prelude::*;
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
+use std::time::*;
 
 /// Offline room planner and visualization tool for screeps-foreman.
 ///
@@ -111,15 +111,18 @@ fn main() -> Result<(), String> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Plan { map, room, output } => {
-            cmd_plan(&map, &room, &output)
-        }
-        Commands::Compare { map, rooms, limit, output } => {
-            cmd_compare(&map, rooms.as_deref(), limit, &output)
-        }
-        Commands::ListRooms { map, sources, has_controller } => {
-            cmd_list_rooms(&map, sources, has_controller)
-        }
+        Commands::Plan { map, room, output } => cmd_plan(&map, &room, &output),
+        Commands::Compare {
+            map,
+            rooms,
+            limit,
+            output,
+        } => cmd_compare(&map, rooms.as_deref(), limit, &output),
+        Commands::ListRooms {
+            map,
+            sources,
+            has_controller,
+        } => cmd_list_rooms(&map, sources, has_controller),
     }
 }
 
@@ -174,13 +177,11 @@ fn cmd_compare(
     let room_iter = rooms.iter();
 
     let mut results: Vec<_> = room_iter
-        .filter_map(|room| {
-            match run_room(room, output_dir) {
-                Ok(plan) => Some((room.name().to_owned(), plan)),
-                Err(err) => {
-                    error!("Failed planning {}: {}", room.name(), err);
-                    None
-                }
+        .filter_map(|room| match run_room(room, output_dir) {
+            Ok(plan) => Some((room.name().to_owned(), plan)),
+            Err(err) => {
+                error!("Failed planning {}: {}", room.name(), err);
+                None
             }
         })
         .collect();
@@ -194,14 +195,24 @@ fn cmd_compare(
     });
 
     println!();
-    println!("{:<10} {:>7} {:>7} {:>7} {:>7} {:>7} {:>7} {:>7}",
-        "Room", "Total", "SrcDst", "CtrlD", "Hub", "Tower", "ExtEff", "Upkeep");
+    println!(
+        "{:<10} {:>7} {:>7} {:>7} {:>7} {:>7} {:>7} {:>7}",
+        "Room", "Total", "SrcDst", "CtrlD", "Hub", "Tower", "ExtEff", "Upkeep"
+    );
     println!("{}", "-".repeat(73));
     for (name, plan) in &results {
         let s = &plan.score;
-        println!("{:<10} {:>7.4} {:>7.3} {:>7.3} {:>7.3} {:>7.3} {:>7.3} {:>7.3}",
-            name, s.total, s.source_distance, s.controller_distance,
-            s.hub_quality, s.tower_coverage, s.extension_efficiency, s.upkeep_cost);
+        println!(
+            "{:<10} {:>7.4} {:>7.3} {:>7.3} {:>7.3} {:>7.3} {:>7.3} {:>7.3}",
+            name,
+            s.total,
+            s.source_distance,
+            s.controller_distance,
+            s.hub_quality,
+            s.tower_coverage,
+            s.extension_efficiency,
+            s.upkeep_cost
+        );
     }
 
     println!();
@@ -209,7 +220,11 @@ fn cmd_compare(
     Ok(())
 }
 
-fn cmd_list_rooms(map_path: &str, sources_filter: Option<usize>, has_controller: bool) -> Result<(), String> {
+fn cmd_list_rooms(
+    map_path: &str,
+    sources_filter: Option<usize>,
+    has_controller: bool,
+) -> Result<(), String> {
     let map_data = load_map_data(map_path)?;
 
     let mut count = 0;
@@ -226,8 +241,13 @@ fn cmd_list_rooms(map_path: &str, sources_filter: Option<usize>, has_controller:
             continue;
         }
 
-        println!("{:<10} sources={} controllers={} minerals={}",
-            room.name(), nsources, ncontrollers, room.get_minerals().len());
+        println!(
+            "{:<10} sources={} controllers={} minerals={}",
+            room.name(),
+            nsources,
+            ncontrollers,
+            room.get_minerals().len()
+        );
         count += 1;
     }
 
@@ -280,8 +300,8 @@ fn run_room(room: &BenchRoomData, output_dir: &str) -> Result<Plan, String> {
         info!("Done gathering trace");
 
         let trace_name = format!("{}/{}_trace.json", output_dir, room_name);
-        let trace_file =
-            &File::create(trace_name).map_err(|err| format!("Failed to create trace file: {}", err))?;
+        let trace_file = &File::create(trace_name)
+            .map_err(|err| format!("Failed to create trace file: {}", err))?;
 
         info!("Serializing trace to disk...");
         serde_json::to_writer(trace_file, &trace)
@@ -296,17 +316,19 @@ fn run_room(room: &BenchRoomData, output_dir: &str) -> Result<Plan, String> {
     render_plan(&mut img, &plan, 10);
 
     let output_img_name = format!("{}/{}.png", output_dir, room_name);
-    img.save(output_img_name).map_err(|err| format!("Failed to save image: {}", err))?;
+    img.save(output_img_name)
+        .map_err(|err| format!("Failed to save image: {}", err))?;
 
     let serialized_plan = serialize_plan(room, &plan)?;
     let output_plan_name = format!("{}/{}_plan.json", output_dir, room_name);
-    let output_plan_file =
-        &File::create(output_plan_name).map_err(|err| format!("Failed to create plan file: {}", err))?;
+    let output_plan_file = &File::create(output_plan_name)
+        .map_err(|err| format!("Failed to create plan file: {}", err))?;
     serde_json::to_writer(output_plan_file, &serialized_plan)
         .map_err(|err| format!("Failed to write plan json: {}", err))?;
 
     // Report serialized pipeline state size
-    let plan_json = serde_json::to_string(&plan).map_err(|e| format!("Failed to serialize plan: {}", e))?;
+    let plan_json =
+        serde_json::to_string(&plan).map_err(|e| format!("Failed to serialize plan: {}", e))?;
     info!("Serialized plan size: {} bytes", plan_json.len());
 
     Ok(plan)
@@ -523,12 +545,12 @@ where
     P: AsRef<Path>,
 {
     let path = path.as_ref();
-    let mut file =
-        File::open(path).map_err(|err| format!("Failed to open map file '{}': {}", path.display(), err))?;
+    let mut file = File::open(path)
+        .map_err(|err| format!("Failed to open map file '{}': {}", path.display(), err))?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)
         .map_err(|err| format!("Failed to read map file: {}", err))?;
-    let data: MapData =
-        serde_json::from_str(&contents).map_err(|err| format!("Failed to parse map JSON: {}", err))?;
+    let data: MapData = serde_json::from_str(&contents)
+        .map_err(|err| format!("Failed to parse map JSON: {}", err))?;
     Ok(data)
 }
