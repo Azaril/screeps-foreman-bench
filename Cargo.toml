@@ -23,20 +23,7 @@ screeps-timing = { git = "https://github.com/Azaril/screeps-timing", optional = 
 screeps-timing-annotate = { git = "https://github.com/Azaril/screeps-timing-annotate", optional = true }
 clap = { version = "4.5.57", features = ["derive"] }
 
-[patch.'https://github.com/Azaril/screeps-cache']
-screeps-cache = { path = "../screeps-cache" }
-
-[patch.'https://github.com/Azaril/screeps-foreman']
-screeps-foreman = { path = "../screeps-foreman" }
-
-[patch.'https://github.com/Azaril/screeps-common']
-screeps-common = { path = "../screeps-common" }
-
-[patch.'https://github.com/Azaril/screeps-timing']
-screeps-timing = { path = "../screeps-timing" }
-
-[patch.'https://github.com/Azaril/screeps-timing-annotate']
-screeps-timing-annotate = { path = "../screeps-timing-annotate" }
-
-[profile.release]
-debug = true
+# No [patch] table or [profile] here: as a workspace member this crate inherits
+# the root Cargo.toml [patch] table (redirecting its git deps — foreman / common /
+# timing — to the local working tree) and the root build profiles. Host-only
+# (rayon / image), so the wasm aliases in .cargo/config.toml --exclude it.
